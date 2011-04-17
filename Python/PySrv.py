@@ -93,22 +93,28 @@ import os
 from os import path
 import threading
 import signal
-import fcntl
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+
+import __builtin__
 
 import traceback
 
 ###################################################################################################
 # Debugging support
 
-__builtins__['DE'] = 0
+__builtin__.DE = 0
 
 def BUG(level, msg):
     if DE >= level:
         sys.stdout.write("[Debug%s] %s\n\n" % (level, msg))
 
 def EnableDEBUG(level):
-    __builtins__['DE'] = level
-    __builtins__['BUG'] = BUG
+    __builtin__.DE = level
+    __builtin__.BUG = BUG
 
 
 # Example of debugging support:
@@ -144,7 +150,8 @@ def SIGTERM(a,b):
 signal.signal(signal.SIGINT, SIGINT)
 
 # We DO NOT want to have to reap children
-signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+if hasattr(signal, 'SIGCHLD'):
+    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
 # Gracefully handle SIGTERM
 signal.signal(signal.SIGTERM, SIGTERM)
@@ -253,7 +260,8 @@ class ListenerThread(threading.Thread):
         self._Socket.bind(self.Address)
         
         # We do not want this file descriptor to live past a call to exec()
-        fcntl.fcntl(self._Socket.fileno(), fcntl.F_SETFD, fcntl.FD_CLOEXEC)
+        if fcntl:
+            fcntl.fcntl(self._Socket.fileno(), fcntl.F_SETFD, fcntl.FD_CLOEXEC)
 
         # Begin listening!
         self._Socket.listen(self.Backlog)
@@ -378,7 +386,8 @@ class ClientThread(threading.Thread):
         elif sType == 'DROP':
             self.DROP(oConn, sData)
         else:   
-            raise ValueError("Unknown command: %s" % sType)
+            #raise ValueError("Unknown command: %s" % sType)
+            oConn.SendPacket('I do not know that command.  Use "DROP" to exit.')
                     
     #==========================================================================
     def HELO(self, oConn, sData):
@@ -547,7 +556,8 @@ class ClientConnection(BlockingPacketConnection):
         conn.settimeout(self.SOCKET_TIMEOUT)
         
         # Tell it to close on exec
-        fcntl.fcntl(conn.fileno(), fcntl.F_SETFD, fcntl.FD_CLOEXEC)
+        if fcntl:
+            fcntl.fcntl(conn.fileno(), fcntl.F_SETFD, fcntl.FD_CLOEXEC)
         
         # Call baseclass constructor
         BlockingPacketConnection.__init__(self, conn, addr)
